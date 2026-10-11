@@ -1,0 +1,13 @@
+{
+  "name": "earshot",
+  "description": "Earshot reads Claude Code replies aloud on macOS.",
+  "owner": {
+    "name": "stasliw"
+  },
+  "plugins": [
+    {
+      "name": "earshot",
+      "source": "./"
+    }
+  ]
+}

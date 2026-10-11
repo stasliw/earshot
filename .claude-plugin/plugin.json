@@ -1,0 +1,17 @@
+{
+  "name": "earshot",
+  "displayName": "Earshot: Auto Read Aloud",
+  "version": "1.0.0",
+  "description": "Reads every Claude reply aloud automatically in your Mac's system voice, so there's no speaker button to click each time. Turn it on with /earshot:on; your next message cuts it off.",
+  "author": {
+    "name": "stasliw",
+    "url": "https://github.com/stasliw"
+  },
+  "homepage": "https://github.com/stasliw/earshot",
+  "repository": "https://github.com/stasliw/earshot",
+  "license": "MIT",
+  "keywords": ["tts", "text-to-speech", "read-aloud", "voice", "accessibility", "macos", "hands-free"],
+  "icon": "./assets/icon.svg",
+  "documentationUrl": "https://github.com/stasliw/earshot#readme",
+  "supportUrl": "https://github.com/stasliw/earshot/issues"
+}
