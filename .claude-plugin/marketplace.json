@@ -1,12 +1,12 @@
 {
-  "name": "earshot",
-  "description": "Earshot reads Claude Code replies aloud on macOS.",
+  "name": "replycast",
+  "description": "Replycast reads Claude Code replies aloud on macOS.",
   "owner": {
     "name": "stasliw"
   },
   "plugins": [
     {
-      "name": "earshot",
+      "name": "replycast",
       "source": "./"
     }
   ]

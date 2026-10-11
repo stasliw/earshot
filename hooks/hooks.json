@@ -6,7 +6,7 @@
           {
             "type": "command",
             "command": "/bin/sh",
-            "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/earshot.sh", "stop"],
+            "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/replycast.sh", "stop"],
             "timeout": 10
           }
         ]
@@ -18,7 +18,7 @@
           {
             "type": "command",
             "command": "/bin/sh",
-            "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/earshot.sh", "hush"],
+            "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/replycast.sh", "hush"],
             "timeout": 10
           }
         ]

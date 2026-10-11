@@ -1,25 +1,26 @@
-"""Tests for scripts/earshot.sh. Run from the repository root:
+"""Tests for scripts/replycast.sh. Run from the repository root:
 
     python3 -m unittest discover -s tests -v
 
-The hook tests run earshot.sh the way Claude Code does, with a fake `say`
-that writes what it receives on stdin to a file.
+The hook tests run replycast.sh the way Claude Code does, with a fake `say`
+first on PATH that writes what it receives on stdin to a file. Each run gets a
+small, explicit environment, never the caller's.
 """
 
 import json
-import os
 import subprocess
 import tempfile
 import time
 import unittest
 from pathlib import Path
 
-SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "earshot.sh"
+SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "replycast.sh"
+SYSTEM_PATH = "/usr/bin:/bin:/usr/sbin:/sbin"
 
 FAKE_SAY = """#!/bin/sh
 [ "$1" = "-f" ] && [ "$2" = "-" ] || exit 2
-cat > "$EARSHOT_TEST_OUT"
-sleep "${EARSHOT_TEST_SLEEP:-0}"
+cat > "$REPLYCAST_TEST_OUT"
+sleep "${REPLYCAST_TEST_SLEEP:-0}"
 """
 
 
@@ -40,14 +41,19 @@ def running(pid):
 
 def clean(markdown):
     return subprocess.run(
-        ["/bin/sh", str(SCRIPT), "clean"], input=markdown, capture_output=True, text=True, check=True
+        ["/bin/sh", str(SCRIPT), "clean"],
+        input=markdown,
+        capture_output=True,
+        text=True,
+        env={"PATH": SYSTEM_PATH},
+        check=True,
     ).stdout.rstrip("\n")
 
 
 class CleanTest(unittest.TestCase):
     def test_full_reply_keeps_prose_and_drops_markup(self):
         reply = (
-            "Yes, it's **feasible**. See [the hooks docs](https://example.com/hooks) and `say`.\n"
+            "Yes, it's **feasible**. See [the hooks docs](https://docs.test/hooks) and `say`.\n"
             "\n"
             "## How it would work\n"
             "- A Stop hook runs → the script speaks\n"
@@ -60,11 +66,11 @@ class CleanTest(unittest.TestCase):
             "| a | b |\n"
             "|---|---|\n"
             "---\n"
-            "Raw link https://example.com/x here.\n"
+            "Raw link https://docs.test/x here.\n"
             "<!-- reply 1 -->\n"
             "\n"
             "Sources:\n"
-            "- [Docs](https://example.com)\n"
+            "- [Docs](https://docs.test)\n"
         )
         self.assertEqual(
             clean(reply),
@@ -86,7 +92,7 @@ class CleanTest(unittest.TestCase):
         self.assertEqual(clean("Edit last_assistant_message now"), "Edit last_assistant_message now.")
 
     def test_bold_sources_heading_ends_the_reading(self):
-        self.assertEqual(clean("Done.\n\n**Sources:**\n- [a](https://a.example)"), "Done.")
+        self.assertEqual(clean("Done.\n\n**Sources:**\n- [a](https://a.test)"), "Done.")
 
     def test_multiline_html_comment_is_skipped(self):
         self.assertEqual(clean("<!--\nhidden\n-->\nShown"), "Shown.")
@@ -101,15 +107,16 @@ class HookTest(unittest.TestCase):
         tmp = Path(self.tmp.name)
         self.data = tmp / "data"
         self.out = tmp / "spoken.txt"
-        fake = tmp / "say"
+        fake_bin = tmp / "bin"
+        fake_bin.mkdir()
+        fake = fake_bin / "say"
         fake.write_text(FAKE_SAY)
         fake.chmod(0o755)
-        self.env = dict(
-            os.environ,
-            CLAUDE_PLUGIN_DATA=str(self.data),
-            EARSHOT_SAY=str(fake),
-            EARSHOT_TEST_OUT=str(self.out),
-        )
+        self.env = {
+            "PATH": f"{fake_bin}:{SYSTEM_PATH}",
+            "CLAUDE_PLUGIN_DATA": str(self.data),
+            "REPLYCAST_TEST_OUT": str(self.out),
+        }
 
     def tearDown(self):
         self.run_script("off")
@@ -122,7 +129,7 @@ class HookTest(unittest.TestCase):
             input=stdin,
             capture_output=True,
             text=True,
-            env=dict(self.env, **env),
+            env={**self.env, **env},
             timeout=10,
         )
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -137,13 +144,13 @@ class HookTest(unittest.TestCase):
 
     def test_speaks_cleaned_reply_when_on(self):
         self.run_script("on")
-        self.stop({"last_assistant_message": "Done. See `earshot.sh`.\n\n```\nx\n```"})
+        self.stop({"last_assistant_message": "Done. See `replycast.sh`.\n\n```\nx\n```"})
         self.assertTrue(wait_for(lambda: self.out.exists() and self.out.read_text()))
-        self.assertEqual(self.out.read_text(), "Done. See earshot.sh.\nCode omitted.\n")
+        self.assertEqual(self.out.read_text(), "Done. See replycast.sh.\nCode omitted.\n")
 
     def test_reply_text_is_never_written_to_disk(self):
         self.run_script("on")
-        self.stop({"last_assistant_message": "A private reply."}, EARSHOT_TEST_SLEEP="5")
+        self.stop({"last_assistant_message": "A private reply."}, REPLYCAST_TEST_SLEEP="5")
         self.assertTrue(wait_for(self.out.exists))
         self.assertEqual(sorted(p.name for p in self.data.iterdir()), ["on", "say.pid"])
 
@@ -155,7 +162,7 @@ class HookTest(unittest.TestCase):
 
     def test_next_prompt_stops_the_reading(self):
         self.run_script("on")
-        self.stop({"last_assistant_message": "A long reply."}, EARSHOT_TEST_SLEEP="30")
+        self.stop({"last_assistant_message": "A long reply."}, REPLYCAST_TEST_SLEEP="30")
         pid = int((self.data / "say.pid").read_text())
         self.assertTrue(wait_for(lambda: running(pid)))
         self.run_script("hush")
@@ -173,25 +180,23 @@ class HookTest(unittest.TestCase):
             other.wait()
 
     def test_on_off_status(self):
-        self.assertEqual(self.run_script("status"), "Earshot is off.")
-        self.assertEqual(self.run_script("on"), "Earshot is on. Replies will be read aloud.")
-        self.assertEqual(self.run_script("status"), "Earshot is on.")
-        self.assertEqual(self.run_script("off"), "Earshot is off.")
-        self.assertEqual(self.run_script("status"), "Earshot is off.")
+        self.assertEqual(self.run_script("status"), "Replycast is off.")
+        self.assertEqual(self.run_script("on"), "Replycast is on. Replies will be read aloud.")
+        self.assertEqual(self.run_script("status"), "Replycast is on.")
+        self.assertEqual(self.run_script("off"), "Replycast is off.")
+        self.assertEqual(self.run_script("status"), "Replycast is off.")
 
     def test_data_folder_passed_as_argument(self):
         other = Path(self.tmp.name) / "from-skill"
-        self.assertEqual(self.run_script("on", str(other)), "Earshot is on. Replies will be read aloud.")
+        self.assertEqual(self.run_script("on", str(other)), "Replycast is on. Replies will be read aloud.")
         self.assertTrue((other / "on").exists())
 
     def test_on_refuses_without_say(self):
-        self.assertEqual(
-            self.run_script("on", EARSHOT_SAY="/nonexistent/say"), "Earshot needs macOS: the say command wasn't found."
-        )
+        self.assertEqual(self.run_script("on", PATH="/bin"), "Replycast needs macOS: the say command wasn't found.")
         self.assertFalse((self.data / "on").exists())
 
     def test_on_refuses_without_data_folder(self):
-        self.assertEqual(self.run_script("on", CLAUDE_PLUGIN_DATA=""), "Earshot couldn't find its data folder.")
+        self.assertEqual(self.run_script("on", CLAUDE_PLUGIN_DATA=""), "Replycast couldn't find its data folder.")
 
 
 if __name__ == "__main__":
